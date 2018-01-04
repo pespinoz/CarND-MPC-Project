@@ -104,7 +104,7 @@ int main() {
           v = v + throttle_value * latency;
 
           // Coordinate system transformation for the waypoints: rotation from the map coord system to the car's system
-          for (int i = 0; i < ptsx.size(); i++) {
+          for (size_t i = 0; i < ptsx.size(); i++) {
             double delta_x = ptsx[i] - px;
             double delta_y = ptsy[i] - py;
             ptsx[i] = delta_x * cos(0 - psi) - delta_y * sin(0 - psi);
@@ -160,7 +160,7 @@ int main() {
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
 
-          for (int i = 2; i < vars.size(); i++) {
+          for (size_t i = 2; i < vars.size(); i++) {
             if (i%2 == 0) {
               mpc_x_vals.push_back(vars[i]);
             } else {
