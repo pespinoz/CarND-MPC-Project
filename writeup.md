@@ -1,109 +1,141 @@
 
-## **PID Control Project**
-The goals / steps of this project are the following:
+## **MPC Project**
+The goals of this project are the following:
 
-* Your code should compile with `cmake` or `make` without errors.
-* Implement a PID controller for the steering angle of the car. 
-* Optionally implement another PID to control the speed of the car.
-* Tune/Optimize the parameters of the controller(s) and explain your choice.
+* The code should compile with `cmake` or `make` without errors.
+* Describe the vehicle model in detail (state, actuators and update equations). 
+* List reasons for the chosen `N` (timestep length) and `dt` (elapsed duration 
+between timesteps).
+* Describe pre-processing of waypoints, the vehicle state, and/or actuators 
+before the MPC procedure.
+* Implement Model Predictive Control that, additionally, handles a 100 millisecond 
+latency.
 * The car should complete a whole lap around the track in a safe manner.
-* Record a video of the car in the simulator. 
 
-[//]: # (Image References)
-
-[im01]: ./figures/cte_and_steering.jpg
-[im02]: ./figures/speed_and_throttle.jpg
+[//]: # (Image/Video References)
 [vi01]: ./video.mp4
 
 ---
 
 ### Files Included:
-My project includes the following files:
-* `src/main.cpp:` The main file of the project; here I define the parameters of the controllers, call the PID class, interact with the simulator, and output variables to plot later with `matplotlib`.  
-* `src/PID.h:` Header file of the PID class.
-* `src/PID.cpp:` Source file of the PID class.
-* `figures/plots.py:` Python script to plot the controlled variables of the PID controllers implemented in `main.cpp`.
+Here I list the files I modified to complete this project:
+
+* `src/main.cpp:` The main file of the project. Here the mpc object is initialized, 
+we pre-process waypoints and transform coordinate systems, we call the MPC solver, 
+and interaction with the simulator takes place.  
+* `src/MPC.h:` Header file of the MPC class.
+* `src/MPC.cpp:` Source file of the MPC class. Here the parameters of the controller 
+are defined, and the method `Solve` (which calls on `Ipopt`) is implemented.
 * `./writeup.md:` You're reading it!
-* `./video.mp4:` A video successfully showing the vehicle driving a lap around the track.
+* `./video.mp4:` A video successfully showing the vehicle driving a lap around 
+the track.
 
 --- 
 
 ### Running the Code:
 
-The code was implemented in CLion / Ubuntu 16.04 LTS.
+The code was implemented in CLion / Ubuntu 16.04.3 LTS.
 
-To execute, do `cmake-build-debug/./pid` and then start the Term2 simulator. 
-
-Additionally, we produce plots by executing `python figures/plots.py`. 
+To execute, do `cmake-build-debug/./mpc`, start the Term 2 simulator, and choose 
+Project 5: MPC Controller. 
 
 ---
 
-### [Rubric](https://review.udacity.com/#!/rubrics/824/view) Points
+### [Rubric Points](https://review.udacity.com/#!/rubrics/896/view)
 
-Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
+Here I will consider the rubric points individually and describe how I addressed each 
+one in my implementation.  
 
 ---
 ### Writeup / README
 
-#### 1. Creating a PID controller for the steering angle
+#### 1. The Model
 
-This is quite straightforward, and is implemented in the following lines of the `PID.cpp` (class).
+In this project MPC reframes the task of following a defined path over the track as 
+an optimization problem. This involves i) simulating actuator inputs (throttle and 
+steering), ii) predicting the resulting trajectory, and iii) selecting the trajectory 
+with minimum cost (and thus extracting optimal actuations). This process is iterative by nature, as inputs are constantly computed over a future horizon; in a self driving car this is called "Receding Horizon Control". This horizon should not be greater than a few seconds (given how radically the environment can change at each time step).
+
+The state of the car is given by the vector: 
 ```
-void PID::UpdateError(double cte, double delta_timestamp) {
-    d_error = (cte - p_error) / delta_timestamp;
-    p_error = cte;
-    i_error += cte;
-}
-
-double PID::TotalError() {
-    return control_value = Kp*p_error + Kd*d_error + Ki*i_error; 
-}
+[x, y, psi, v, cte, epsi]^T
 ```
-The parameters used for this PID controller were:
+that contains the variables for position, orientation, velocity, cross-track error and orientation error. The actuator vector is given by: 
+```
+[a, delta]^T 
+```
+which represents the throttle and steering, respectively.
 
-| Kp |   Ki	 |   Kd    |
-|:---:|:-----:|:--------:|
-| -0.06 |  0.0  | -0.098  |
+The vehicle model kinematics (or update equations) come from a simplified approach we followed on the class lectures. These group of equations are implemented in `MPC.cpp`:
+```
+x(t+1) = x(t) + v(t) * cos(psi(t)) * dt
+y(t+1) = y(t) + v(t) * sin(psi(t)) * dt
+psi(t+1) = psi(t) - v(t) * delta(t) / Lf * dt
+v(t+1) = v(t) + a(t) * dt
+cte(t+1) = (f(t) - y(t)) + (v(t) * sin(epsi(t)) * dt)
+epsi(t+1) = (psi(t) - psides(t)) - v(t) * delta(t) / Lf * dt
+```
 
-#### 2. Implementing a PID controller for the throttle
+The optimization engine used in this MPC is called Ipopt (Interior Point OPTimizer) and receives as input i) the prior kinematic model, ii) constraints, and iii) the cost function to be minimized (more on this later!). 
 
-I found, as it will be shown later, that to fine-tune the parameters of the steering PID it was easier to maintain the car in a specific operating point. This is equivalent to including a cruise-control for the car so a constant speed can be mantained.
-
-The control action here is upon the throttle. I re-used the code from the PID class shown in the previous Section. The controller parameters I used were:
-
-| Kp |   Ki	 |   Kd    |
-|:---:|:-----:|:--------:|
-| -0.30 |  0.0  | -0.001  |
-    
-#### 3. Tuning the PIDs hyper-parameters
-
-The parameters of the PID controllers were set manually instead of using an algorithmic approach such as Twiddle. 
-The reason for this is two-folded: i) Twiddle would be rather time-consuming to implement as in each iteration of the algorithm
-the simulator would have to run in a significant portion of the track, ii) Manually tuning the parameters is useful 
-to develop an intuition on what each of these parameters (and their variations) mean. 
-
-We choose the parameters as follows:  First, all **Kp**, **Ki**, and **Kd** are set to zero. The first one I start 
-increasing (in magnitude) is the proportional constant. This reduces the error initially (putting the car in the center 
-of the lane), but in corners the controller is affected by significant oscillations. Next step is to increase the 
-magnitude of the derivative constant. This reduces oscillations, but I find that in the corners the steering response
- is still not enough to carry the car through the whole track.
+For now, **regarding constraints**, we can say each variable of the state vector can have any value, in principle. The actuators on the other hand are limited by the physics of the car. The throttle has a limited range of [-1, 1], while the steering goes between (-25, 25) degrees (Unity limit). The last set of constraints come from the adoption of the kinematic model given above. This is valid for any if the six equations, but we'll exemplify with the position here:
+  
+```
+x(t+1) - x(t) - v(t) * cos(psi(t)) * dt = 0
+```
  
-At that point I increase the magnitude of **Kp** to improve the steering response, reaching a value of -0.06. For 
-that value of the proportional constant, I find a value of **Kd=-0.098** that manages to minimize the overshoot. 
-Increasing or diminishing this last value can bring back the overshoot.
+ Thus the left hand side has the constraint of being zero for any of the state equations.
+ 
+#### 2. Timestep Length and Elapsed Duration 
 
-By this point (and through a similar process for the throttle controller) I find the car drives successfully around 
-the track at ~40 mph. In this context varying the integral constant **Ki** is not needed, as the car steering doesn't
- show signs of bias. If there was, the value of **Ki** would be extremely small, but for me it works well set as zero.
+The values of `N` and `dt` define the horizon `T`. The horizon control `T` can not be large, especially in a mobile application where the prediction can strongly be affected by environmental changes. The chosen values are shown below:
 
-Here we show the plots obtained with the Python script in `figures/plots.py:`. The first plot shows the cross-track 
-error (controlled variable) and steering angle (action control) as a function of time.
+| N |   dt	 |   T horizon (s)    |
+|:---:|:-----:|:--------:|
+| 12 |  0.1  | 1.2  |
 
-![alt text][im01]
 
-The second plot shows the car's speed (controlled variable) and throttle value (action control) as a function of time.
-![alt text][im02]
+Essentially, what the Ipopt optimization engine does is to tune control inputs `(a, delta)` until a low cost vector of control inputs is found. The length of this vector is determined by `N`. Thus a large `N` yields to a large number of optimized variables, which is a computationally intensive task. Correspondingly, a small `dt` is also computationally intensive, but a large one results in less frequent actuations (discretization) error. 
 
-#### 4. Video Implementation
+I began by trying the values in the "Mind the Line" quiz of Lesson 19, which were `N = 25`and `dt = 0.05`. However this proved to be too intensive for the simulation and the car was less apt to stay around the track. Diminishing `N` and doubling `dt` to the values shown in the Table above made the smoother lap around the track, given the choice of other parameters (mainly related to the cost function). 
+ 
+#### 3. Polynomial Fitting and MPC Pre-processing
+    
+The first thing we want to do in this Project is to make a coordinate transformation into the car's reference system. Having the car at the origin of our system considerably simplifies the equations and how we handle state values such as the cross-track error and the orientation error (and their evolution).
 
-Here's a [link to my video result][vi01], with the car driving around the track at ~40 mph.
+Thus we perform a rotation and reflection to go from (x, y) global positions (where the waypoints are defined) to the car's system. Here, the x-axis points in the direction of the car's heading and the y-axis points to the left. Therefore `x, y, and psi` are all zero in this system. We fit a 3rd order polynomial to the transformed waypoints, which consequently, lets us define both `cte` and `psi`.
+
+We then pass our state and polynomial coefficients to the MP controller. Given a cost function that consider the minimization of the following quantities:
+
+| Cost Function Factors	 |   Weights/Importance (relative units)   |
+|:----:|:--------:|
+|cross track error | 1000|
+|orientation error | 1000|
+|velocity w.r.t. 60 mph reference | 1|
+|steering | 10|
+|throttle | 10|
+|steering transitions | 150|
+|throttle transitions | 15|
+
+Then Ipopt selects the trajectory with minimum cost -given the constraints of the model and actuators- and deliver us a vector with the corresponding control inputs. The idea is we apply the first control input (steering angle & throttle) and then repeat the loop in each timestep.
+
+#### 4. Model Predictive Control with Latency
+
+Latency refers to the delay of actuator inputs propagating through a real physical system (e.g. cars). MPC can handle latency graciously, as the delay can be incorporated into the vehicle model we described above.
+
+Simply, we predict the state variables into a future given by the latency (in this case 100 ms) before feeding it to the MPC solver. This code is included in `main.cpp`: 
+```
+// Predicting state parameters for a latency of 100 ms
+double latency = 0.1;
+px = px + v * cos(psi) * latency;
+py = py + v * sin(psi) * latency;
+psi = psi - v * steer_value / Lf * latency;
+v = v + throttle_value * latency;
+```
+
+It's worth noting that the PID controller of the previous Project ignores this issue.
+
+#### 5. Simulation
+
+Here's a [link to my video result][vi01], with the car driving around the track at a 
+reference speed of 60 mph. Yellow line represents the reference path (given by waypoints), while the green line represents the MPC trajectory.

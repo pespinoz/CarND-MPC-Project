@@ -1,12 +1,14 @@
 <component name="ProjectDictionaryState">
   <dictionary name="pablo">
     <words>
+      <w>discretization</w>
       <w>dvector</w>
       <w>epsi</w>
       <w>polyfit</w>
       <w>psides</w>
       <w>ptrx</w>
       <w>ptry</w>
+      <w>reframes</w>
       <w>timestep</w>
       <w>vals</w>
       <w>waypoints</w>
